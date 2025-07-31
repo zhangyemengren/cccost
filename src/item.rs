@@ -45,7 +45,7 @@ impl Item {
     }
     
     pub fn get_timestamp_key(&self) -> String {
-        // Parse timestamp and format to the same day (removing time)
+        // 解析时间戳并格式化为同一天（移除时间）
         if let Ok(dt) = self.timestamp.parse::<DateTime<Utc>>() {
             dt.format("%Y-%m-%d").to_string()
         } else {

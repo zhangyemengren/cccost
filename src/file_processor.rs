@@ -8,7 +8,7 @@ use std::sync::Mutex;
 
 pub struct FileProcessor {
     directory: PathBuf,
-    collected_items: Mutex<HashMap<(String, String), Usage>>, // (model, timestamp_key) -> Usage
+    collected_items: Mutex<HashMap<(String, String), Usage>>, // (模型, 时间戳键) -> 使用量
 }
 
 impl FileProcessor {
@@ -21,11 +21,11 @@ impl FileProcessor {
 
     pub fn process_files(&self) -> Vec<((String, String), Usage)> {
         if !self.directory.exists() {
-            println!("Directory {} does not exist", self.directory.display());
+            println!("目录 {} 不存在", self.directory.display());
             return Vec::new();
         }
 
-        // Get all subdirectories
+        // 获取所有子目录
         let subdirs: Vec<_> = match fs::read_dir(&self.directory) {
             Ok(entries) => entries
                 .filter_map(|entry| entry.ok())
@@ -33,12 +33,12 @@ impl FileProcessor {
                 .filter(|path| path.is_dir())
                 .collect(),
             Err(e) => {
-                eprintln!("Failed to read directory: {}", e);
+                eprintln!("读取目录失败: {}", e);
                 return Vec::new();
             }
         };
 
-        // Collect all files from all subdirectories
+        // 从所有子目录收集所有文件
         let all_files: Vec<_> = subdirs
             .par_iter()
             .flat_map(|dir| {
@@ -53,44 +53,44 @@ impl FileProcessor {
             })
             .collect();
 
-        // Process files in parallel
+        // 并行处理文件
         all_files.par_iter().for_each(|file_path| {
             self.process_file(file_path);
         });
         
-        // Return merged results
+        // 返回合并后的结果
         self.get_merged_results()
     }
 
     fn process_file(&self, file_path: &PathBuf) {
         match fs::read_to_string(file_path) {
             Ok(content) => {
-                // Check if file is JSON
+                // 检查文件是否为JSON
                 if file_path.extension().and_then(|s| s.to_str()) == Some("json") ||
                    file_path.extension().and_then(|s| s.to_str()) == Some("jsonl") {
                     self.print_json_content(&content);
                 }
             }
             Err(e) => {
-                eprintln!("Error reading file {}: {}", file_path.display(), e);
+                eprintln!("读取文件 {} 出错: {}", file_path.display(), e);
             }
         }
     }
 
     fn print_json_content(&self, content: &str) {
-        // Check if it's a JSONL file by trying to parse the first line
+        // 通过尝试解析第一行来检查是否为JSONL文件
         let lines: Vec<&str> = content.lines().collect();
         
         if lines.is_empty() {
             return;
         }
         
-        // Try to parse first non-empty line as JSON
+        // 尝试将第一个非空行解析为JSON
         let first_line = lines.iter().find(|line| !line.trim().is_empty());
         
         if let Some(line) = first_line {
             if serde_json::from_str::<Value>(line).is_ok() {
-                // It's JSONL format - process line by line
+                // 这是JSONL格式 - 逐行处理
                 for line in content.lines() {
                     if line.trim().is_empty() {
                         continue;
@@ -101,18 +101,18 @@ impl FileProcessor {
                             self.print_json_value(&json, 1);
                         }
                         Err(_) => {
-                            // Silently skip invalid lines
+                            // 静默跳过无效行
                         }
                     }
                 }
             } else {
-                // Try to parse as regular JSON
+                // 尝试作为常规JSON解析
                 match serde_json::from_str::<Value>(content) {
                     Ok(json) => {
                         self.print_json_value(&json, 0);
                     }
                     Err(_) => {
-                        // Silently skip invalid JSON
+                        // 静默跳过无效的JSON
                     }
                 }
             }
@@ -120,7 +120,7 @@ impl FileProcessor {
     }
 
     fn print_json_value(&self, value: &Value, _indent: usize) {
-        // Try to deserialize as LogEntry
+        // 尝试反序列化为LogEntry
         if let Ok(log_entry) = serde_json::from_value::<LogEntry>(value.clone()) {
             if let Some(item) = Item::from_log_entry(log_entry) {
                 self.collect_item(item);
@@ -143,7 +143,7 @@ impl FileProcessor {
     fn get_merged_results(&self) -> Vec<((String, String), Usage)> {
         let items = self.collected_items.lock().unwrap();
         
-        // Sort by model and timestamp
+        // 按模型和时间戳排序
         let mut sorted_items: Vec<_> = items.iter()
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
