@@ -1,6 +1,7 @@
 use tabled::{
     settings::{object::{Columns, Rows}, Alignment, Modify, Style, themes::Colorization, Color}, Table, Tabled
 };
+use tabled::settings::formatting::TrimStrategy;
 use tabled::settings::object::Segment;
 use tabled::settings::Width;
 use crate::item::Usage;
@@ -238,6 +239,7 @@ impl TableRenderer {
         table.with(
             Modify::new(Columns::new(2..num_columns))
                 .with(Alignment::right())
+                .with(TrimStrategy::Horizontal)
         );
         
         // 为表头行添加背景色
