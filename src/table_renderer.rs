@@ -1,6 +1,7 @@
 use tabled::{
-    settings::{object::{Columns, Segment}, Alignment, Modify, Style, Width}, Table, Tabled
+    settings::{object::{Columns, Rows}, Alignment, Modify, Style, Width, formatting::TrimStrategy, themes::Colorization, Color}, Table, Tabled
 };
+use tabled::settings::object::Segment;
 use crate::item::Usage;
 use terminal_size::{Width as TermWidth, terminal_size};
 
@@ -23,6 +24,14 @@ pub struct UsageRow {
 }
 
 impl UsageRow {
+    /// 表格的列数
+    const COLUMN_COUNT: usize = 7;
+    
+    /// 获取表格的列数
+    pub fn column_count() -> usize {
+        Self::COLUMN_COUNT
+    }
+    
     pub fn from_data(date: String, model: String, usage: Usage) -> Self {
         let input = usage.input_tokens.unwrap_or(0);
         let output = usage.output_tokens.unwrap_or(0);
@@ -174,13 +183,11 @@ impl TableRenderer {
             }
         }
 
+        let num_columns = UsageRow::column_count();
         let mut table = Table::new(rows);
-        
+
         // 应用样式
         table.with(Style::modern());
-        
-        // 数字列右对齐（从第3列开始，现在有7列）
-        table.modify(Columns::new(2..7), Alignment::right());
         
         // 获取终端宽度并调整表格
         if let Some((TermWidth(width), ..)) = terminal_size() {
@@ -188,17 +195,26 @@ impl TableRenderer {
             
             // 使用终端宽度的80%，最大200
             let table_width = (term_width * 8 / 10).min(200);
-            // 计算实际列数（现在是7列）
-            let num_columns = 7;
             let cell_width = table_width / num_columns;
-            // 设置全体表格宽度，当文字超出单元格限制时，自动换行
-            table.with(Modify::new(Segment::all()).with(Width::wrap(cell_width)));
             // 设置单元格宽度，增大到给定单元格大小
             table.with(Modify::new(Segment::all()).with(Width::increase(cell_width)));
+            table.with(Modify::new(Segment::all()).with(Width::wrap(cell_width)));
         } else {
             // 无法获取终端大小时的后备方案
-            table.with(Width::wrap(100));
+            table.with(Width::wrap(10));
         }
+
+        // 数字列右对齐（从第3列开始，即索引2-6）
+        // increase的MinWidth的布局时 需要使用TrimStrategy协助右对齐
+        table.with(
+            Modify::new(Columns::new(2..num_columns))
+                .with(Alignment::right())
+                .with(TrimStrategy::Horizontal)
+
+        );
+        
+        // 为表头行添加背景色
+        table.with(Colorization::exact([Color::FG_BRIGHT_GREEN], Rows::new(0..1)));
 
         println!("\n=== Usage Summary ===");
         println!("{}", table);
