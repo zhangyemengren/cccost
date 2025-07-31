@@ -1,7 +1,10 @@
 use tabled::{
     settings::{object::{Columns, Rows}, Alignment, Modify, Style, themes::Colorization, Color}, Table, Tabled
 };
+use tabled::settings::object::Segment;
+use tabled::settings::Width;
 use crate::item::Usage;
+use terminal_size::{Width as TermWidth, terminal_size};
 
 #[derive(Tabled)]
 pub struct UsageRow {
@@ -214,8 +217,24 @@ impl TableRenderer {
 
         // 应用样式
         table.with(Style::modern());
+
+        // 获取终端宽度并调整表格
+        if let Some((TermWidth(width), ..)) = terminal_size() {
+            let term_width = width as usize;
+
+            // 使用终端宽度的70%，最大200
+            let table_width = (term_width * 7 / 10).min(200);
+            let cell_width = table_width / num_columns;
+            // 设置单元格宽度，增大到给定单元格大小
+            table.with(Modify::new(Segment::all()).with(Width::increase(cell_width)));
+            table.with(Modify::new(Segment::all()).with(Width::wrap(cell_width)));
+        } else {
+            // 无法获取终端大小时的后备方案
+            table.with(Width::wrap(10));
+        }
         
         // 数字列右对齐（从第3列开始，即索引2-6）
+        // increase的MinWidth的布局时 需要使用TrimStrategy协助右对齐
         table.with(
             Modify::new(Columns::new(2..num_columns))
                 .with(Alignment::right())
@@ -227,7 +246,7 @@ impl TableRenderer {
         // 为 Total 行添加特殊样式（黄色前景色，加粗效果）
         table.with(Colorization::exact([Color::FG_YELLOW], Rows::new((total_rows-1)..total_rows)));
 
-        println!("=== Usage Summary ===");
+        println!(" === Usage Summary ===");
         println!("{}", table);
     }
 }
