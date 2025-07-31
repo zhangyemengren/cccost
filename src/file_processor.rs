@@ -3,19 +3,19 @@ use std::fs;
 use std::path::PathBuf;
 use serde_json::Value;
 use crate::item::{Item, Usage, LogEntry};
-use std::collections::HashMap;
-use std::sync::Mutex;
+use dashmap::DashMap;
 
 pub struct FileProcessor {
     directory: PathBuf,
-    collected_items: Mutex<HashMap<(String, String), Usage>>, // (模型, 时间戳键) -> 使用量
+    // 使用 DashMap 替代 Mutex<HashMap>，提供更细粒度的锁
+    collected_items: DashMap<(String, String), Usage>, // (模型, 时间戳键) -> 使用量
 }
 
 impl FileProcessor {
     pub fn new(directory: PathBuf) -> Self {
         Self { 
             directory,
-            collected_items: Mutex::new(HashMap::new()),
+            collected_items: DashMap::new(),
         }
     }
 
@@ -132,21 +132,22 @@ impl FileProcessor {
         let key = (item.model.clone(), item.get_timestamp_key());
         
         if let Some(usage) = item.usage {
-            let mut items = self.collected_items.lock().unwrap();
-            
-            items.entry(key)
+            // DashMap 提供了更高效的并发访问
+            self.collected_items
+                .entry(key)
                 .and_modify(|existing| *existing = existing.clone() + usage.clone())
                 .or_insert(usage);
         }
     }
     
     fn get_merged_results(&self) -> Vec<((String, String), Usage)> {
-        let items = self.collected_items.lock().unwrap();
+        // 直接从 DashMap 转换为 Vec，无需锁
+        let mut sorted_items: Vec<_> = self.collected_items
+            .iter()
+            .map(|entry| (entry.key().clone(), entry.value().clone()))
+            .collect();
         
         // 按模型和时间戳排序
-        let mut sorted_items: Vec<_> = items.iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
         sorted_items.sort_by(|a, b| a.0.cmp(&b.0));
         
         sorted_items
