@@ -1,9 +1,7 @@
 use tabled::{
-    settings::{object::{Columns, Rows}, Alignment, Modify, Style, Width, formatting::TrimStrategy, themes::Colorization, Color}, Table, Tabled
+    settings::{object::{Columns, Rows}, Alignment, Modify, Style, themes::Colorization, Color}, Table, Tabled
 };
-use tabled::settings::object::Segment;
 use crate::item::Usage;
-use terminal_size::{Width as TermWidth, terminal_size};
 
 #[derive(Tabled)]
 pub struct UsageRow {
@@ -124,6 +122,12 @@ impl TableRenderer {
             return;
         }
 
+        // 用于计算总计的变量
+        let mut total_input: u32 = 0;
+        let mut total_output: u32 = 0;
+        let mut total_cache_creation: u32 = 0;
+        let mut total_cache_read: u32 = 0;
+
         // 按日期分组数据
         use std::collections::BTreeMap;
         let mut grouped_data: BTreeMap<String, Vec<(String, Usage)>> = BTreeMap::new();
@@ -136,6 +140,13 @@ impl TableRenderer {
                usage.cache_read_input_tokens.unwrap_or(0) == 0 {
                 continue;
             }
+            
+            // 累计总和
+            total_input += usage.input_tokens.unwrap_or(0);
+            total_output += usage.output_tokens.unwrap_or(0);
+            total_cache_creation += usage.cache_creation_input_tokens.unwrap_or(0);
+            total_cache_read += usage.cache_read_input_tokens.unwrap_or(0);
+            
             grouped_data.entry(date).or_insert_with(Vec::new).push((model, usage));
         }
 
@@ -182,41 +193,41 @@ impl TableRenderer {
                 });
             }
         }
+        
+        // 添加总计行
+        let total_all = total_input + total_output + total_cache_creation + total_cache_read;
+        rows.push(UsageRow {
+            date: "Total".to_string(),
+            model: String::new(), // 模型列为空
+            input_tokens: UsageRow::format_number(total_input),
+            output_tokens: UsageRow::format_number(total_output),
+            cache_creation_input_tokens: UsageRow::format_number(total_cache_creation),
+            cache_read_input_tokens: UsageRow::format_number(total_cache_read),
+            total_tokens: UsageRow::format_number(total_all),
+        });
 
         let num_columns = UsageRow::column_count();
+        // 获取表格行数（包括表头）
+        let total_rows = rows.len() + 1; // +1 因为有表头
+        
         let mut table = Table::new(rows);
 
         // 应用样式
         table.with(Style::modern());
         
-        // 获取终端宽度并调整表格
-        if let Some((TermWidth(width), ..)) = terminal_size() {
-            let term_width = width as usize;
-            
-            // 使用终端宽度的80%，最大200
-            let table_width = (term_width * 8 / 10).min(200);
-            let cell_width = table_width / num_columns;
-            // 设置单元格宽度，增大到给定单元格大小
-            table.with(Modify::new(Segment::all()).with(Width::increase(cell_width)));
-            table.with(Modify::new(Segment::all()).with(Width::wrap(cell_width)));
-        } else {
-            // 无法获取终端大小时的后备方案
-            table.with(Width::wrap(10));
-        }
-
         // 数字列右对齐（从第3列开始，即索引2-6）
-        // increase的MinWidth的布局时 需要使用TrimStrategy协助右对齐
         table.with(
             Modify::new(Columns::new(2..num_columns))
                 .with(Alignment::right())
-                .with(TrimStrategy::Horizontal)
-
         );
         
         // 为表头行添加背景色
         table.with(Colorization::exact([Color::FG_BRIGHT_GREEN], Rows::new(0..1)));
+        
+        // 为 Total 行添加特殊样式（黄色前景色，加粗效果）
+        table.with(Colorization::exact([Color::FG_YELLOW], Rows::new((total_rows-1)..total_rows)));
 
-        println!("\n=== Usage Summary ===");
+        println!("=== Usage Summary ===");
         println!("{}", table);
     }
 }
